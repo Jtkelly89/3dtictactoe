@@ -85,13 +85,11 @@
     top: 0;
     left: 0;
     transform-style: preserve-3d;
-    width: var(--board-size, 26vmin);
-    height: var(--board-size, 26vmin);
-    margin-left: calc(var(--board-size, 26vmin) / -2);
-    margin-top: calc(var(--board-size, 26vmin) / -2);
+    width: var(--board-size);
+    height: var(--board-size);
+    margin-left: calc(var(--board-size) / -2);
+    margin-top: calc(var(--board-size) / -2);
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
     background: var(--board-surface);
     box-shadow: 0 0 0 2px var(--grid-line) inset, 0 18px 30px var(--shadow-color);
     border-radius: 2px;
@@ -107,14 +105,18 @@
     background: transparent;
   }
 
-  .cell:hover {
+  body:not(.exploring) .cell:hover {
     background: var(--cell-hover);
+  }
+
+  body.exploring .cell {
+    cursor: default;
   }
 
   .mark {
     font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
     font-weight: 700;
-    font-size: calc(var(--board-size, 26vmin) / 6);
+    font-size: calc(var(--board-size) / var(--n) / 2.1);
     user-select: none;
     pointer-events: none;
     line-height: 1;
@@ -131,39 +133,94 @@
   .cell.win {
     background: var(--highlight-bg);
     box-shadow: 0 0 0 1.5px var(--highlight-border) inset;
+    z-index: 2;
   }
 
-  .reveal-btn {
+  #lineOverlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #lineOverlay line {
+    stroke: var(--highlight-border);
+    stroke-width: 4;
+    stroke-linecap: round;
+    display: none;
+  }
+
+  body.exploring #lineOverlay line {
+    display: inline;
+  }
+
+  .bar {
     position: fixed;
     left: 50%;
-    bottom: 4vh;
     transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: stretch;
+    background: var(--board-surface);
+    border: 1.5px solid var(--grid-line);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+
+  .size-bar {
+    top: 4vh;
+  }
+
+  .explore-bar {
+    bottom: 4vh;
+  }
+
+  .bar button {
     font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--text-secondary);
-    background: var(--board-surface);
-    border: 1.5px solid var(--grid-line);
-    border-radius: 999px;
-    padding: 0.6em 1.4em;
+    background: none;
+    border: none;
+    padding: 0.6em 1.2em;
     cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
-  .reveal-btn:hover {
+  .bar button + button {
+    border-left: 1.5px solid var(--grid-line);
+  }
+
+  .bar button:hover {
     background: var(--btn-hover-bg);
   }
 
-  .reveal-btn:focus-visible {
+  .bar button:focus-visible {
     outline: 2px solid var(--mark-x);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
 
-  .reveal-btn.active {
+  .bar button.active {
+    background: var(--grid-line);
+    color: var(--board-surface);
+  }
+
+  .explore-bar button.primary.active {
     background: var(--highlight-border);
-    border-color: var(--highlight-border);
     color: #1a1a1a;
+  }
+
+  .explore-bar .counter {
+    cursor: default;
+  }
+
+  .explore-bar .counter:hover {
+    background: none;
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -174,24 +231,27 @@
 </style>
 </head>
 <body>
+  <div class="bar size-bar" id="sizeBar"></div>
+
   <div class="scene">
     <div class="stack" id="stack"></div>
   </div>
-  <button class="reveal-btn" id="revealBtn" type="button">Show winning lines</button>
+  <svg id="lineOverlay"><line id="lineSeg" x1="0" y1="0" x2="0" y2="0"></line></svg>
+
+  <div class="bar explore-bar" id="exploreBar"></div>
 
   <script>
-    const LAYER_OFFSETS = ["22vmin", "0vmin", "-22vmin"];
-    const SIZE = 3;
+    const BOARD_SIZES = [3, 4, 5];
+    const LAYER_SPAN_VMIN = 44;
+    const BOARD_SIZE_VMIN = 32;
 
-    const state = LAYER_OFFSETS.map(() =>
-      Array.from({ length: SIZE }, () => Array(SIZE).fill(""))
-    );
-
-    const LINES = generateLines(SIZE);
-    let winsVisible = false;
+    let SIZE = 3;
+    let state, LINES, exploring, currentLineIndex;
 
     const stackEl = document.getElementById("stack");
-    const revealBtn = document.getElementById("revealBtn");
+    const sizeBarEl = document.getElementById("sizeBar");
+    const exploreBarEl = document.getElementById("exploreBar");
+    const lineSegEl = document.getElementById("lineSeg");
 
     function generateLines(n) {
       const lines = [];
@@ -226,70 +286,156 @@
       return lines;
     }
 
-    function findWinningCells() {
-      const winners = new Set();
-      for (const line of LINES) {
-        const values = line.map(([l, r, c]) => state[l][r][c]);
-        if (values[0] && values.every((v) => v === values[0])) {
-          line.forEach(([l, r, c]) => winners.add(`${l}-${r}-${c}`));
-        }
-      }
-      return winners;
+    function layerOffsets(n) {
+      if (n === 1) return ["0vmin"];
+      const step = LAYER_SPAN_VMIN / (n - 1);
+      return Array.from({ length: n }, (_, i) => `${LAYER_SPAN_VMIN / 2 - i * step}vmin`);
     }
 
-    function applyWinHighlights() {
-      const winners = winsVisible ? findWinningCells() : new Set();
-      document.querySelectorAll(".cell").forEach((cell) => {
-        const key = `${cell.dataset.layer}-${cell.dataset.row}-${cell.dataset.col}`;
-        cell.classList.toggle("win", winners.has(key));
+    function buildBoard(n) {
+      SIZE = n;
+      state = Array.from({ length: n }, () =>
+        Array.from({ length: n }, () => Array(n).fill(""))
+      );
+      LINES = generateLines(n);
+      exploring = false;
+      currentLineIndex = 0;
+
+      document.documentElement.style.setProperty("--n", n);
+      document.documentElement.style.setProperty("--board-size", `${BOARD_SIZE_VMIN}vmin`);
+
+      stackEl.innerHTML = "";
+      const offsets = layerOffsets(n);
+      offsets.forEach((offset, layerIndex) => {
+        const layer = document.createElement("div");
+        layer.className = "layer";
+        layer.style.transform = `translateZ(${offset})`;
+        layer.style.zIndex = String(offsets.length - layerIndex);
+        layer.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+        layer.style.gridTemplateRows = `repeat(${n}, 1fr)`;
+
+        for (let row = 0; row < n; row++) {
+          for (let col = 0; col < n; col++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.dataset.layer = layerIndex;
+            cell.dataset.row = row;
+            cell.dataset.col = col;
+            cell.addEventListener("click", onCellClick);
+            layer.appendChild(cell);
+          }
+        }
+
+        stackEl.appendChild(layer);
       });
-      revealBtn.textContent = winsVisible ? "Hide winning lines" : "Show winning lines";
-      revealBtn.classList.toggle("active", winsVisible);
+
+      renderSizeBar();
+      renderExploreBar();
+      document.body.classList.remove("exploring");
     }
 
-    revealBtn.addEventListener("click", () => {
-      winsVisible = !winsVisible;
-      applyWinHighlights();
-    });
+    function renderSizeBar() {
+      sizeBarEl.innerHTML = "";
+      BOARD_SIZES.forEach((n) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = `${n}×${n}×${n}`;
+        btn.className = n === SIZE ? "active" : "";
+        btn.addEventListener("click", () => {
+          if (n !== SIZE) buildBoard(n);
+        });
+        sizeBarEl.appendChild(btn);
+      });
+    }
 
-    LAYER_OFFSETS.forEach((offset, layerIndex) => {
-      const layer = document.createElement("div");
-      layer.className = "layer";
-      layer.style.transform = `translateZ(${offset})`;
-      layer.style.zIndex = String(LAYER_OFFSETS.length - layerIndex);
+    function cellEl(l, r, c) {
+      return document.querySelector(`.cell[data-layer="${l}"][data-row="${r}"][data-col="${c}"]`);
+    }
 
-      for (let row = 0; row < SIZE; row++) {
-        for (let col = 0; col < SIZE; col++) {
-          const cell = document.createElement("div");
-          cell.className = "cell";
-          cell.dataset.layer = layerIndex;
-          cell.dataset.row = row;
-          cell.dataset.col = col;
-          cell.addEventListener("click", onCellClick);
-          layer.appendChild(cell);
-        }
+    function renderExploreBar() {
+      exploreBarEl.innerHTML = "";
+
+      const toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "primary" + (exploring ? " active" : "");
+      toggleBtn.textContent = exploring ? "Done" : "Show winning lines";
+      toggleBtn.addEventListener("click", () => {
+        exploring = !exploring;
+        currentLineIndex = 0;
+        document.body.classList.toggle("exploring", exploring);
+        renderExploreBar();
+        updateLineDisplay();
+      });
+      exploreBarEl.appendChild(toggleBtn);
+
+      if (exploring) {
+        const prevBtn = document.createElement("button");
+        prevBtn.type = "button";
+        prevBtn.textContent = "◀ Prev";
+        prevBtn.addEventListener("click", () => stepLine(-1));
+
+        const counter = document.createElement("button");
+        counter.type = "button";
+        counter.className = "counter";
+        counter.disabled = true;
+
+        const nextBtn = document.createElement("button");
+        nextBtn.type = "button";
+        nextBtn.textContent = "Next ▶";
+        nextBtn.addEventListener("click", () => stepLine(1));
+
+        exploreBarEl.appendChild(prevBtn);
+        exploreBarEl.appendChild(counter);
+        exploreBarEl.appendChild(nextBtn);
+      }
+    }
+
+    function stepLine(delta) {
+      currentLineIndex = (currentLineIndex + delta + LINES.length) % LINES.length;
+      updateLineDisplay();
+    }
+
+    function updateLineDisplay() {
+      document.querySelectorAll(".cell.win").forEach((cell) => cell.classList.remove("win"));
+
+      const counter = exploreBarEl.querySelector(".counter");
+      if (!exploring) {
+        lineSegEl.removeAttribute("x1");
+        return;
       }
 
-      stackEl.appendChild(layer);
+      const line = LINES[currentLineIndex];
+      line.forEach(([l, r, c]) => cellEl(l, r, c).classList.add("win"));
+      if (counter) counter.textContent = `Line ${currentLineIndex + 1} of ${LINES.length}`;
+
+      positionLineOverlay(line);
+    }
+
+    function positionLineOverlay(line) {
+      const first = cellEl(...line[0]).getBoundingClientRect();
+      const last = cellEl(...line[line.length - 1]).getBoundingClientRect();
+      lineSegEl.setAttribute("x1", first.left + first.width / 2);
+      lineSegEl.setAttribute("y1", first.top + first.height / 2);
+      lineSegEl.setAttribute("x2", last.left + last.width / 2);
+      lineSegEl.setAttribute("y2", last.top + last.height / 2);
+    }
+
+    window.addEventListener("resize", () => {
+      if (exploring) positionLineOverlay(LINES[currentLineIndex]);
     });
 
     function onCellClick(e) {
+      if (exploring) return;
       const { layer, row, col } = e.currentTarget.dataset;
       const l = Number(layer), r = Number(row), c = Number(col);
       const current = state[l][r][c];
       const next = current === "" ? "X" : current === "X" ? "O" : "";
       state[l][r][c] = next;
       render(l, r, c);
-      if (winsVisible) {
-        winsVisible = false;
-        applyWinHighlights();
-      }
     }
 
     function render(l, r, c) {
-      const cell = document.querySelector(
-        `.cell[data-layer="${l}"][data-row="${r}"][data-col="${c}"]`
-      );
+      const cell = cellEl(l, r, c);
       const value = state[l][r][c];
       cell.innerHTML = "";
       if (value) {
@@ -299,6 +445,8 @@
         cell.appendChild(mark);
       }
     }
+
+    buildBoard(SIZE);
   </script>
 </body>
 </html>
