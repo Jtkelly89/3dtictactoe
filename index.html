@@ -4,13 +4,301 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>3D Tic-Tac-Toe</title>
-<link rel="stylesheet" href="style.css">
+<style>
+  :root {
+    --bg: #eef1f4;
+    --board-surface: #ffffff;
+    --grid-line: #23262b;
+    --shadow-color: rgba(20, 24, 32, 0.25);
+    --mark-x: #2c5cc5;
+    --mark-o: #c23b22;
+    --cell-hover: rgba(44, 92, 197, 0.07);
+    --highlight-bg: rgba(217, 164, 6, 0.22);
+    --highlight-border: #d9a406;
+    --text-secondary: #3a3a3a;
+    --btn-hover-bg: rgba(0, 0, 0, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14161a;
+      --board-surface: #1f2126;
+      --grid-line: #d8dadf;
+      --shadow-color: rgba(0, 0, 0, 0.6);
+      --mark-x: #7da2ff;
+      --mark-o: #ff8a5c;
+      --cell-hover: rgba(125, 162, 255, 0.1);
+      --highlight-bg: rgba(232, 185, 35, 0.22);
+      --highlight-border: #e8b923;
+      --text-secondary: #cfd2d8;
+      --btn-hover-bg: rgba(255, 255, 255, 0.08);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --board-surface: #1f2126;
+    --grid-line: #d8dadf;
+    --shadow-color: rgba(0, 0, 0, 0.6);
+    --mark-x: #7da2ff;
+    --mark-o: #ff8a5c;
+    --cell-hover: rgba(125, 162, 255, 0.1);
+    --highlight-bg: rgba(232, 185, 35, 0.22);
+    --highlight-border: #e8b923;
+    --text-secondary: #cfd2d8;
+    --btn-hover-bg: rgba(255, 255, 255, 0.08);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: var(--bg);
+  }
+
+  .scene {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    perspective: 9000px;
+  }
+
+  .stack {
+    position: relative;
+    transform-style: preserve-3d;
+    transform: rotateX(58deg) rotateZ(-40deg);
+  }
+
+  .layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-style: preserve-3d;
+    width: var(--board-size, 26vmin);
+    height: var(--board-size, 26vmin);
+    margin-left: calc(var(--board-size, 26vmin) / -2);
+    margin-top: calc(var(--board-size, 26vmin) / -2);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    background: var(--board-surface);
+    box-shadow: 0 0 0 2px var(--grid-line) inset, 0 18px 30px var(--shadow-color);
+    border-radius: 2px;
+  }
+
+  .cell {
+    position: relative;
+    border: 1.5px solid var(--grid-line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: transparent;
+  }
+
+  .cell:hover {
+    background: var(--cell-hover);
+  }
+
+  .mark {
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
+    font-weight: 700;
+    font-size: calc(var(--board-size, 26vmin) / 6);
+    user-select: none;
+    pointer-events: none;
+    line-height: 1;
+  }
+
+  .mark-X {
+    color: var(--mark-x);
+  }
+
+  .mark-O {
+    color: var(--mark-o);
+  }
+
+  .cell.win {
+    background: var(--highlight-bg);
+    box-shadow: 0 0 0 1.5px var(--highlight-border) inset;
+  }
+
+  .reveal-btn {
+    position: fixed;
+    left: 50%;
+    bottom: 4vh;
+    transform: translateX(-50%);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: var(--board-surface);
+    border: 1.5px solid var(--grid-line);
+    border-radius: 999px;
+    padding: 0.6em 1.4em;
+    cursor: pointer;
+  }
+
+  .reveal-btn:hover {
+    background: var(--btn-hover-bg);
+  }
+
+  .reveal-btn:focus-visible {
+    outline: 2px solid var(--mark-x);
+    outline-offset: 2px;
+  }
+
+  .reveal-btn.active {
+    background: var(--highlight-border);
+    border-color: var(--highlight-border);
+    color: #1a1a1a;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cell {
+      transition: background 0.12s ease;
+    }
+  }
+</style>
 </head>
 <body>
   <div class="scene">
     <div class="stack" id="stack"></div>
   </div>
   <button class="reveal-btn" id="revealBtn" type="button">Show winning lines</button>
-  <script src="script.js"></script>
+
+  <script>
+    const LAYER_OFFSETS = ["22vmin", "0vmin", "-22vmin"];
+    const SIZE = 3;
+
+    const state = LAYER_OFFSETS.map(() =>
+      Array.from({ length: SIZE }, () => Array(SIZE).fill(""))
+    );
+
+    const LINES = generateLines(SIZE);
+    let winsVisible = false;
+
+    const stackEl = document.getElementById("stack");
+    const revealBtn = document.getElementById("revealBtn");
+
+    function generateLines(n) {
+      const lines = [];
+      const deltas = [-1, 0, 1];
+      for (const dx of deltas) {
+        for (const dy of deltas) {
+          for (const dz of deltas) {
+            if (dx === 0 && dy === 0 && dz === 0) continue;
+            const firstNonZero = dx !== 0 ? dx : dy !== 0 ? dy : dz;
+            if (firstNonZero < 0) continue;
+
+            for (let x = 0; x < n; x++) {
+              for (let y = 0; y < n; y++) {
+                for (let z = 0; z < n; z++) {
+                  const endX = x + dx * (n - 1);
+                  const endY = y + dy * (n - 1);
+                  const endZ = z + dz * (n - 1);
+                  if (endX < 0 || endX >= n || endY < 0 || endY >= n || endZ < 0 || endZ >= n) {
+                    continue;
+                  }
+                  const line = [];
+                  for (let k = 0; k < n; k++) {
+                    line.push([x + dx * k, y + dy * k, z + dz * k]);
+                  }
+                  lines.push(line);
+                }
+              }
+            }
+          }
+        }
+      }
+      return lines;
+    }
+
+    function findWinningCells() {
+      const winners = new Set();
+      for (const line of LINES) {
+        const values = line.map(([l, r, c]) => state[l][r][c]);
+        if (values[0] && values.every((v) => v === values[0])) {
+          line.forEach(([l, r, c]) => winners.add(`${l}-${r}-${c}`));
+        }
+      }
+      return winners;
+    }
+
+    function applyWinHighlights() {
+      const winners = winsVisible ? findWinningCells() : new Set();
+      document.querySelectorAll(".cell").forEach((cell) => {
+        const key = `${cell.dataset.layer}-${cell.dataset.row}-${cell.dataset.col}`;
+        cell.classList.toggle("win", winners.has(key));
+      });
+      revealBtn.textContent = winsVisible ? "Hide winning lines" : "Show winning lines";
+      revealBtn.classList.toggle("active", winsVisible);
+    }
+
+    revealBtn.addEventListener("click", () => {
+      winsVisible = !winsVisible;
+      applyWinHighlights();
+    });
+
+    LAYER_OFFSETS.forEach((offset, layerIndex) => {
+      const layer = document.createElement("div");
+      layer.className = "layer";
+      layer.style.transform = `translateZ(${offset})`;
+      layer.style.zIndex = String(LAYER_OFFSETS.length - layerIndex);
+
+      for (let row = 0; row < SIZE; row++) {
+        for (let col = 0; col < SIZE; col++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.dataset.layer = layerIndex;
+          cell.dataset.row = row;
+          cell.dataset.col = col;
+          cell.addEventListener("click", onCellClick);
+          layer.appendChild(cell);
+        }
+      }
+
+      stackEl.appendChild(layer);
+    });
+
+    function onCellClick(e) {
+      const { layer, row, col } = e.currentTarget.dataset;
+      const l = Number(layer), r = Number(row), c = Number(col);
+      const current = state[l][r][c];
+      const next = current === "" ? "X" : current === "X" ? "O" : "";
+      state[l][r][c] = next;
+      render(l, r, c);
+      if (winsVisible) {
+        winsVisible = false;
+        applyWinHighlights();
+      }
+    }
+
+    function render(l, r, c) {
+      const cell = document.querySelector(
+        `.cell[data-layer="${l}"][data-row="${r}"][data-col="${c}"]`
+      );
+      const value = state[l][r][c];
+      cell.innerHTML = "";
+      if (value) {
+        const mark = document.createElement("span");
+        mark.className = `mark mark-${value}`;
+        mark.textContent = value;
+        cell.appendChild(mark);
+      }
+    }
+  </script>
 </body>
 </html>
