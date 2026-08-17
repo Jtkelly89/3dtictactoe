@@ -21,7 +21,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  perspective: 1800px;
+  perspective: 9000px;
 }
 
 .stack {
@@ -72,4 +72,42 @@ html, body {
 
 .mark-O {
   color: #dc2626;
+}
+
+.cell.win {
+  background: rgba(217, 164, 6, 0.22);
+  box-shadow: 0 0 0 1.5px #d9a406 inset;
+}
+
+.reveal-btn {
+  position: fixed;
+  left: 50%;
+  bottom: 4vh;
+  transform: translateX(-50%);
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3a3a3a;
+  background: #fdfdfd;
+  border: 1.5px solid #1a1a1a;
+  border-radius: 999px;
+  padding: 0.6em 1.4em;
+  cursor: pointer;
+}
+
+.reveal-btn:hover {
+  background: #f0f0f0;
+}
+
+.reveal-btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.reveal-btn.active {
+  background: #d9a406;
+  border-color: #d9a406;
+  color: #1a1a1a;
 }
