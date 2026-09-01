@@ -242,8 +242,14 @@
 
   <script>
     const BOARD_SIZES = [3, 4, 5];
-    const LAYER_SPAN_VMIN = 44;
-    const BOARD_SIZE_VMIN = 32;
+
+    function layerStepVmin(n) {
+      return n <= 4 ? 22 : 15;
+    }
+
+    function boardSizeVmin(n) {
+      return n <= 4 ? 32 : 26;
+    }
 
     let SIZE = 3;
     let state, LINES, exploring, currentLineIndex;
@@ -287,9 +293,9 @@
     }
 
     function layerOffsets(n) {
-      if (n === 1) return ["0vmin"];
-      const step = LAYER_SPAN_VMIN / (n - 1);
-      return Array.from({ length: n }, (_, i) => `${LAYER_SPAN_VMIN / 2 - i * step}vmin`);
+      const step = layerStepVmin(n);
+      const span = step * (n - 1);
+      return Array.from({ length: n }, (_, i) => `${span / 2 - i * step}vmin`);
     }
 
     function buildBoard(n) {
@@ -302,7 +308,7 @@
       currentLineIndex = 0;
 
       document.documentElement.style.setProperty("--n", n);
-      document.documentElement.style.setProperty("--board-size", `${BOARD_SIZE_VMIN}vmin`);
+      document.documentElement.style.setProperty("--board-size", `${boardSizeVmin(n)}vmin`);
 
       stackEl.innerHTML = "";
       const offsets = layerOffsets(n);
